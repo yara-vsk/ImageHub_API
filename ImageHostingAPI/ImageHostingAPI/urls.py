@@ -24,7 +24,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('image.urls')),
     re_path(r'^media/(?P<path>.*)', media_access, name='media')
-
 ]
 
 if settings.DEBUG:
