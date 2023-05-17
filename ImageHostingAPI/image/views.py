@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timedelta
-from types import NoneType
+
 
 import pytz
 from django.core.signing import Signer
@@ -72,12 +72,11 @@ def media_access(request, path, *args, **kwargs):
 
         try:
             os.mkdir(root)
-            root = root + '/' + path.split('/')[-1]
-            create_image(MEDIA_ROOT, root, path, height)
-            response = FileResponse(open(root, 'rb'))
+            create_image(MEDIA_ROOT, root + '/' + path.split('/')[-1], path, height)
+            response = FileResponse(open(root + '/' + path.split('/')[-1], 'rb'))
             return response
         except FileExistsError:
-
+            root = root + '/' + path.split('/')[-1]
             try:
                 response = FileResponse(open(root, 'rb'))
                 return response

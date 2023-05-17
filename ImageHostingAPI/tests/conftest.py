@@ -1,11 +1,15 @@
+import os
+
 import pytest
 
 
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
+from image.models import Image
 from users.models import Tier, Thumbnail
 
+file_path = os.path.join(os.path.dirname(__file__), 'media_for_tests', 'image_test.jpg')
 
 @pytest.fixture
 def create_superuser():
@@ -21,7 +25,8 @@ def create_superuser():
     tier_prem.save()
     tier_ent.save()
     get_user_model().objects.create_superuser(username='test', tier=tier_ent, password='test', email='test@test.test')
-    return
+    user = get_user_model().objects.filter(id=1).first()
+    return user
 
 
 @pytest.fixture
@@ -33,3 +38,11 @@ def client():
 def auth_client(create_superuser,client):
     client.login(username='test', password='test')
     return client
+
+
+@pytest.fixture
+def create_superuser_image(create_superuser,auth_client):
+    with open(file_path, 'rb') as file:
+        auth_client.post('/api/v1/images/', data={'file': file})
+    image=Image.objects.filter(id=1).first()
+    return image
