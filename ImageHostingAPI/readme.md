@@ -1,8 +1,9 @@
-# API that allows any user to upload an image in PNG or JPG format
+# API that allows any authenticated user to upload an image in PNG or JPG format
 
 ## General info
 * Users can upload images via HTTP request;
 * Users can list their images;
+  ![img_1.png](img_1.png)
 * There are three bultin account tiers: Basic, Premium and Enterprise;
 * Users that have "Basic" plan after uploading an image get:
   - a link to a thumbnail that's 200px in height;
@@ -10,7 +11,7 @@
   - a link to a thumbnail that's 200px in height;
   - a link to a thumbnail that's 400px in height;
   - a link to the originally uploaded image;
-* Users that have "Enterprise" plan get;
+* Users that have "Enterprise" plan get:
   - a link to a thumbnail that's 200px in height;
   - a link to a thumbnail that's 400px in height;
   - a link to the originally uploaded image;

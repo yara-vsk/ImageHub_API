@@ -1,5 +1,4 @@
 import os
-
 import pytest
 
 
@@ -10,6 +9,7 @@ from image.models import Image
 from users.models import Tier, Thumbnail
 
 file_path = os.path.join(os.path.dirname(__file__), 'media_for_tests', 'image_test.jpg')
+
 
 @pytest.fixture
 def create_superuser():

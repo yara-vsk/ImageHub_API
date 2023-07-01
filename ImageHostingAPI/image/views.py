@@ -1,7 +1,6 @@
 import os
 from datetime import datetime, timedelta
 
-
 import pytz
 from django.core.signing import Signer
 from django.http import FileResponse, Http404, HttpResponse
