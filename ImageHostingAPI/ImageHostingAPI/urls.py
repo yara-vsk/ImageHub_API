@@ -18,12 +18,10 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include, re_path
 
-from image.views import media_access
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('image.urls')),
-    re_path(r'^media/(?P<path>.*)', media_access, name='media')
+    path('', include('image.urls'))
 ]
 
 if settings.DEBUG:

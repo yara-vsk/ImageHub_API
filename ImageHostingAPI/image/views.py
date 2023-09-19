@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta
 import pytz
 from django.core.exceptions import ObjectDoesNotExist
@@ -10,7 +11,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from ImageHostingAPI.settings import MEDIA_ROOT
-from image.fileschecker import files_checker
 from image.imagecreator import create_image
 from image.models import Image
 from image.serializers import ImageSerializer
@@ -24,54 +24,43 @@ class ImageAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        user = request.user
-        images = Image.objects.filter(uploader=user)
+        images = Image.objects.filter(uploader=request.user)
         serializer = ImageSerializer(images, many=True, context={'request':request})
         return Response(serializer.data, status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
-        images_list = []
-        files = list(request.FILES.values())
-        if not files:
-            return Response({'error': "HTTP request does not contain image(s)."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        file_list = list(request.FILES.values())
         user = request.user
-        if files_checker(files):
-            for image in files:
-                image = Image.objects.create(
-                    image=image,
-                    uploader=user
-                )
-                images_list.append(image)
-            serializer = ImageSerializer(images_list, many=True, context={'request':request})
+
+        if not file_list or len(file_list) > 1:
+            return Response({'error': "The HTTP request should contain one image."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        image_file = file_list[0]
+
+        if re.match(r'.*\.(png|jpg)$', image_file.name):
+            image = Image.objects.create(
+                image=image_file,
+                uploader=user
+            )
+
+            serializer = ImageSerializer(image, context={'request': request})
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response({'error': "Image(s) should be in the format PNG or JPG."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'error': "Image(s) should be in the format PNG or JPG."},
+                        status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def media_access(request, path, *args, **kwargs):
-    user = request.user
+def get_thumbnail(height, path):
 
-    try:
-        image = Image.objects.get(image__exact=path)
-    except ObjectDoesNotExist:
-        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
-
-    if image.uploader != user:
-        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
-
-    height = str(request.GET.get('height'))
+    image = Image.objects.filter(image__contains=path).first()
     thumbnail_sizes = [str(thumbnail.size) for thumbnail in
-                       Tier.objects.get(id=request.user.tier.id).thumbnail_sizes.all()]
+                       Tier.objects.get(id=image.uploader.tier.id).thumbnail_sizes.all()]
 
     if height not in thumbnail_sizes:
-        if not [key for key in request.GET.keys()] and user.tier.link_originally_image:
-            response = FileResponse(open(MEDIA_ROOT + '/' + path, 'rb'))
-            return response
         return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
 
-    root = MEDIA_ROOT + '/' + 'user_' + str(user.id) + '/' + height
+    root = MEDIA_ROOT + '/' + 'user_' + str(image.uploader.id) + '/' + height
 
     try:
         os.mkdir(root)
@@ -89,11 +78,22 @@ def media_access(request, path, *args, **kwargs):
             return response
 
 
+
+def get_originally_image(path):
+
+    image = Image.objects.filter(image__contains=path).first()
+
+    if image.uploader.tier.link_originally_image:
+        response = FileResponse(open(MEDIA_ROOT + '/' + path, 'rb'))
+        return response
+    return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_signed_url(request):
     signer = Signer()
-    signed_image_data = request.GET.get('image_name')
+    signed_image_data = request.GET.get('image_data')
     expiry_seconds = request.GET.get('seconds')
 
     if not request.user.tier.expiring_links:
@@ -120,21 +120,17 @@ def get_signed_url(request):
 
     expiry_time = datetime.now(pytz.utc) + timedelta(seconds=expiry_seconds)
     image_data.update({'expiry_time': expiry_time.strftime('%Y-%m-%d %H:%M:%S.%f%z')})
-    url = f'{request.scheme}://{request.get_host()}'+'/api/v1/expiring_link'+'?url='+signer.sign_object(image_data)
+    url = f'{request.scheme}://{request.get_host()}'+'/api/v1/download'+'?image_data='+signer.sign_object(image_data)
     return Response({'expiring_link': url})
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_image_binary(request):
+def get_image_by_link(request):
     signer = Signer()
-    signed_image_data = request.GET.get('url')
-
-    if not request.user.tier.expiring_links:
-        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+    signed_image_data = request.GET.get('image_data')
 
     if signed_image_data is None:
-        return Response({'error': "Parameter 'url' is missing in the request"},
+        return Response({'error': "Parameter 'image_data' is missing in the request"},
                         status=status.HTTP_400_BAD_REQUEST)
 
     try:
@@ -142,17 +138,23 @@ def get_image_binary(request):
     except BadSignature:
         return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
 
-    expiry_time = datetime.strptime(image_data['expiry_time'], '%Y-%m-%d %H:%M:%S.%f%z')
+    path = image_data['path']
+    expiry_time_str = image_data.get('expiry_time')
+    height = image_data.get('height')
+
+    if expiry_time_str is None and height is None:
+        return get_originally_image(path)
+    elif height:
+        return get_thumbnail(height, path)
+
+    expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S.%f%z')
 
     if expiry_time < datetime.now(pytz.utc):
         return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
 
-    path = image_data['path']
     image = Image.objects.filter(image__contains=path).first()
 
     if image:
-        if image.uploader != request.user:
-            return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
         response = FileResponse(open(MEDIA_ROOT + '/' + path, 'rb'))
         return response
 
