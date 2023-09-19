@@ -13,4 +13,4 @@ class Image(models.Model):
     uploader = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
 
     def __str__(self):
-        return f"{self.image.name}"
+        return f"Image(id={self.id})"

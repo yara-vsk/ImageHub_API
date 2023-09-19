@@ -2,14 +2,11 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 
-# Create your models here.
-
-
 class Thumbnail(models.Model):
     size = models.IntegerField()
 
     def __str__(self):
-        return str(self.size)
+        return f"Thumbnail(id={self.id})"
 
 
 class Tier(models.Model):
@@ -19,7 +16,7 @@ class Tier(models.Model):
     thumbnail_sizes = models.ManyToManyField(Thumbnail)
 
     def __str__(self):
-        return self.name
+        return f"Tier(id={self.id})"
 
 
 class CustomUser(AbstractUser):
@@ -27,4 +24,4 @@ class CustomUser(AbstractUser):
     REQUIRED_FIELDS =['tier']
 
     def __str__(self):
-        return self.username
+        return f"CustomUser(id={self.id})"
