@@ -28,6 +28,7 @@ class ImageAPIView(APIView):
         return Response(serializer.data, status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
+        max_file_size = 10 * 1024 * 1024
         file_list = list(request.FILES.values())
         user = request.user
 
@@ -37,7 +38,7 @@ class ImageAPIView(APIView):
 
         image_file = file_list[0]
 
-        if re.match(r'.*\.(png|jpg)$', image_file.name):
+        if re.match(r'.*\.(png|jpg)$', image_file.name) and image_file.size <= max_file_size:
             image = Image.objects.create(
                 image=image_file,
                 uploader=user
@@ -46,43 +47,8 @@ class ImageAPIView(APIView):
             serializer = ImageSerializer(image, context={'request': request})
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        return Response({'error': "Image(s) should be in the format PNG or JPG."},
+        return Response({'error': "Image should be in the format PNG or JPG. Maximum file size: 10 MB"},
                         status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_expiring_link(request):
-    signer = Signer()
-    signed_image_data = request.GET.get('image_data')
-    expiry_seconds = request.GET.get('seconds')
-
-    if not request.user.tier.expiring_links:
-        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
-
-    if signed_image_data is None or expiry_seconds is None:
-        return Response({'error': "Parameter 'image_name' or / and 'seconds' are missing in the request"},
-                        status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        image_data = signer.unsign_object(signed_image_data)
-    except BadSignature:
-        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
-
-    try:
-        expiry_seconds = int(expiry_seconds)
-        if expiry_seconds < 300 or expiry_seconds > 30000:
-            return Response(
-                {'error': 'the number of seconds of link activity should be in the range of 300 to 30000 seconds.'},
-                status=status.HTTP_400_BAD_REQUEST)
-    except ValueError:
-        return Response({'error': 'The number of seconds of link activity should be a number.'},
-                        status=status.HTTP_400_BAD_REQUEST)
-
-    expiry_time = datetime.now(pytz.utc) + timedelta(seconds=expiry_seconds)
-    image_data.update({'expiry_time': expiry_time.strftime('%Y-%m-%d %H:%M:%S.%f%z')})
-    url = f'{request.scheme}://{request.get_host()}'+'/api/v1/download'+'?image_data='+signer.sign_object(image_data)
-    return Response({'expiring_link': url})
 
 
 class ImageDownloadAPIView(APIView):
@@ -108,19 +74,10 @@ class ImageDownloadAPIView(APIView):
             return self.get_originally_image(path)
         elif height:
             return self.get_thumbnail(height, path)
-
-        expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S.%f%z')
-
-        if expiry_time < datetime.now(pytz.utc):
+        elif expiry_time_str == 'default':
             return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
 
-        image = Image.objects.filter(image__contains=path).first()
-
-        if image:
-            response = FileResponse(open(MEDIA_ROOT + '/' + path, 'rb'))
-            return response
-
-        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+        return self.get_originally_image_by_exp_link(expiry_time_str, path)
 
 
     def get_originally_image(self, path):
@@ -159,4 +116,60 @@ class ImageDownloadAPIView(APIView):
                 return response
 
 
+    def get_originally_image_by_exp_link(self, expiry_time_str, path):
+        expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S.%f%z')
 
+        if expiry_time < datetime.now(pytz.utc):
+            return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+
+        image = Image.objects.filter(image__contains=path).first()
+
+        if image:
+            response = FileResponse(open(MEDIA_ROOT + '/' + path, 'rb'))
+            return response
+
+        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_expiring_link(request):
+    signer = Signer()
+    signed_image_data = request.GET.get('image_data')
+    expiry_seconds = request.GET.get('seconds')
+
+    if signed_image_data is None or expiry_seconds is None:
+        return Response({'error': "Parameter 'image_name' or / and 'seconds' are missing in the request"},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        image_data = signer.unsign_object(signed_image_data)
+    except BadSignature:
+        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+
+    path = image_data['path']
+    expiry_time_str = image_data.get('expiry_time')
+
+    if expiry_time_str != "default":
+        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+
+
+    image = Image.objects.filter(image__contains=path).first()
+
+    if not image.uploader.tier.expiring_links or request.user.id != image.uploader.id:
+        return Response(error_cont_404, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        expiry_seconds = int(expiry_seconds)
+        if expiry_seconds < 300 or expiry_seconds > 30000:
+            return Response(
+                {'error': 'the number of seconds of link activity should be in the range of 300 to 30000 seconds.'},
+                status=status.HTTP_400_BAD_REQUEST)
+    except ValueError:
+        return Response({'error': 'The number of seconds of link activity should be a number.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    expiry_time = datetime.now(pytz.utc) + timedelta(seconds=expiry_seconds)
+    image_data.update({'expiry_time': expiry_time.strftime('%Y-%m-%d %H:%M:%S.%f%z')})
+    url = f'{request.scheme}://{request.get_host()}'+'/api/v1/download/'+'?image_data='+signer.sign_object(image_data)
+    return Response({'expiring_link': url})

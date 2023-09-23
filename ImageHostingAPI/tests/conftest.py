@@ -1,11 +1,7 @@
 import os
 import pytest
-
-
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
-
-from image.models import Image
 from users.models import Tier, Thumbnail
 
 file_path = os.path.join(os.path.dirname(__file__), 'media_for_tests', 'image_for_test_to_DELETE.jpg')
@@ -50,7 +46,7 @@ def client():
 
 
 @pytest.fixture
-def auth_client_super(create_superuser,client):
+def auth_client_super(create_superuser, client):
     client.login(username='test', password='test')
     return client
 
@@ -64,6 +60,5 @@ def auth_client(create_user, client):
 @pytest.fixture
 def create_superuser_image(auth_client_super):
     with open(file_path, 'rb') as file:
-        auth_client_super.post('/api/v1/images/', data={'file': file})
-    image=Image.objects.filter(id=1).first()
-    return image
+        response = auth_client_super.post('/api/v1/images/', data={'file': file})
+    return response

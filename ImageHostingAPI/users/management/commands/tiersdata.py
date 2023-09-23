@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from users.models import Tier, Thumbnail
-from django.contrib.auth import models
+
 
 
 class Command(BaseCommand):
