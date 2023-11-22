@@ -1,4 +1,6 @@
-# API that allows any authenticated user to upload an image in PNG or JPG format
+# ImageHub API
+
+This API provides a comprehensive solution for image uploading and management, offering various features tailored to different user tiers, with additional flexibility for administrators.
 
 ## General info
 * Users can upload images via HTTP request. Image should be in the format PNG or JPG. Maximum file size: 10 MB(Maximum size to be determined with the client.);
