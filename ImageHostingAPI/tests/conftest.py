@@ -20,9 +20,9 @@ def create_tiers():
     tier_bas.save()
     tier_prem.save()
     tier_ent.save()
-    return {'Basic':tier_bas,
-            'Premium':tier_prem,
-            'Enterprise':tier_ent}
+    return {'Basic': tier_bas,
+            'Premium': tier_prem,
+            'Enterprise': tier_ent}
 
 
 @pytest.fixture
